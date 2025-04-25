@@ -105,26 +105,26 @@ class ContabilidadView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        total_ingresos = Transaccion.objects.filter(tipo='ingreso').aggregate(total=Sum('monto'))['total'] or 0
-        total_gastos = Transaccion.objects.filter(tipo='gasto').aggregate(total=Sum('monto'))['total'] or 0
+        # Calcular ingresos (ventas de productos)
+        ingresos = Transaccion.objects.filter(tipo='ingreso').values('producto__nombre').annotate(total=Sum('monto'))
+        total_ingresos = sum(item['total'] for item in ingresos if item['total'] is not None)
+        
+        # Calcular gastos (compras de inventario o inversiones)
+        gastos = Transaccion.objects.filter(tipo='gasto').values('producto__nombre').annotate(total=Sum('monto'))
+        total_gastos = sum(item['total'] for item in gastos if item['total'] is not None)
+        
+        # Calcular ganancia neta
         ganancia_neta = total_ingresos - total_gastos
-
+        
         resumen_financiero = {
             "total_ingresos": total_ingresos,
             "total_gastos": total_gastos,
-            "ganancia_neta": ganancia_neta
+            "ganancia_neta": ganancia_neta,
+            "detalle_ingresos": list(ingresos),
+            "detalle_gastos": list(gastos)
         }
 
-        transacciones = Transaccion.objects.all().order_by('-fecha')
-        paginator = TransaccionPagination()
-        paginated_transacciones = paginator.paginate_queryset(transacciones, request)
-        transacciones_serializadas = TransaccionSerializer(paginated_transacciones, many=True)
-
-        return paginator.get_paginated_response({
-            "message": "Acceso permitido",
-            "resumen_financiero": resumen_financiero,
-            "transacciones": transacciones_serializadas.data
-        })
+        return Response(resumen_financiero)
     
 class ProductoImagenUploadView(APIView):
     parser_classes = (MultiPartParser, FormParser)
